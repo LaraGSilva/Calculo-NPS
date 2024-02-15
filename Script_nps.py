@@ -1,24 +1,24 @@
 import pandas as pd
 
-# Lê o arquivo CSV
-df = pd.read_csv('base_nps.csv')
+def load_data(file_path):
+    try:
+        df = pd.read_csv(file_path)
+        return df
+    except FileNotFoundError:
+        print(f"Erro: Arquivo '{file_path}' não encontrado.")
+        return None
 
-# Transforma em objeto
-df['data'] = pd.to_datetime(df['data_com_horario']).dt.date
-df['hora'] = pd.to_datetime(df['data_com_horario']).dt.time
+def preprocess_data(df):
+    df['data'] = pd.to_datetime(df['data_com_horario']).dt.date
+    df['hora'] = pd.to_datetime(df['data_com_horario']).dt.time
+    df['horario'] = pd.to_datetime(df['data_com_horario'].dt.strftime('%H:%M'))
+    df['hora'] = pd.to_datetime(df['hora'])
+    df = df[(df['hora'] >= pd.to_datetime('8:55').time()) & (df['hora'] <= pd.to_datetime('18:30').time())]
+    df = df.dropna(subset=["agente", "filas", "origem"])
+    df['categoria_nps'] = df['nota'].apply(categorize_nps)
+    return df
 
-# Cria uma coluna para o horário
-df['horario'] = pd.to_datetime(df['data_com_horario'].dt.strftime('%H:%M'))
-
-# Filtragem por horário
-df['hora'] = pd.to_datetime(df['hora'])
-df = df[(df['hora'] >= pd.to_datetime('8:55').time()) & (df['hora'] <= pd.to_datetime('18:30').time())]
-
-# Remove valores nulos de agentes, filas e origem
-df = df.dropna(subset=["agente", "filas", "origem"])
-
-# Categoriza as notas
-def categoriza_nps(nota):
+def categorize_nps(nota):
     if nota <= 6:
         return 'detratora'
     elif nota <= 8:
@@ -26,38 +26,36 @@ def categoriza_nps(nota):
     else:
         return 'promotora'
 
-# Nova coluna que categoriza o NPS
-df['categoria_nps'] = df['nota'].apply(categoriza_nps)
+def merge_data(df_main, df_sup_filas):
+    df_main = df_main.merge(df_sup_filas, on='fila', how='left')
+    return df_main
 
-# Salva a base tratada
-df.to_csv('base_nps_tratada.csv', index=False)
-
-# Carrega a base de dados tratada
-df = pd.read_csv('base_nps_tratada.csv')
-
-# Carrega a segunda planilha com informações de filas e superintendências
-df_sup_filas = pd.read_csv('sup_filas.csv')
-
-# Realize o cruzamento das informações com base na coluna 'fila'
-df = df.merge(df_sup_filas, on='fila', how='left')
-
-# Salva a base cruzada
-df.to_csv('base_nps_com_superintendencia.csv', index=False)
-
-# Função para calcular o NPS
-def calcula_nps(dataframe):
+def calculate_nps(dataframe):
     valid_responses = dataframe[(dataframe['nota'] >= 0) & (dataframe['nota'] <= 10)]
-    detratores = len(valid_responses[valid_responses['nota'] <= 6])
-    neutros = len(valid_responses[(valid_responses['nota'] == 7) | (valid_responses['nota'] == 8)])
-    promotores = len(valid_responses[valid_responses['nota'] >= 9])
-    nps = (promotores - detratores) / len(valid_responses) * 100
+    detractors = len(valid_responses[valid_responses['nota'] <= 6])
+    neutrals = len(valid_responses[(valid_responses['nota'] == 7) | (valid_responses['nota'] == 8)])
+    promoters = len(valid_responses[valid_responses['nota'] >= 9])
+    nps = (promoters - detractors) / len(valid_responses) * 100
     return nps
 
-# Chama a função com o DataFrame tratado
-nps_result = calcula_nps(df)
+def main():
+    # Carregar dados
+    df = load_data('base_nps.csv')
+    df_sup_filas = load_data('sup_filas.csv')
 
-# Imprime o resultado do NPS
-print(f"Net Promoter Score (NPS) calculado: {nps_result:.2f}%")
+    if df is not None and df_sup_filas is not None:
+        # Pré-processamento de dados
+        df = preprocess_data(df)
+
+        # Mesclar dados
+        df = merge_data(df, df_sup_filas)
+
+        # Calcular NPS
+        nps_result = calculate_nps(df)
+
+        # Imprimir resultado do NPS
+        print(f"Net Promoter Score (NPS) calculado: {nps_result:.2f}%")
+
 
 
 
